@@ -3,7 +3,7 @@
 #encoding: utf-8
 require 'active_support/core_ext'
 
-#метод парсинга даты и времени
+#Метод парсинга даты и времени
 def parse_date_time(str)
   day = str[0] + str[1]
   month = str[3] + str[4]
@@ -14,27 +14,29 @@ def parse_date_time(str)
   return Time.mktime(year, month, day, hour, min, sec)
 end
 
-#инициализация переменных
+#Инициализация переменных
 file_name = ARGV[1] #имя текстового файла
-end_time_param = ARGV[3].to_i #значение параметра -t
-final_time = 0 #время окончания сбора данных 
-queries = [] #список запросов, попавших в кэш
+cache_live_time = ARGV[3].to_i #значение параметра -t
+
 all_queries = [] #список всех обработанных запросов
 uniq_counter = 0 #счетчик уникальных запросов
+max_size_cache = 0 #размер кэша
+hit = 0 #вероятность попадания в кэш
 
 #читаем исходный файл
 file = File.readlines(file_name);
 file.map! {|element| element.chomp}
 
-#задаем время окончания сбора данных
-final_time = parse_date_time(file[0]).to_i + end_time_param
-
-#парсим дату и время
+#Взвешенные списки запросов
+  in_cache_queries = Hash.new(0)
+  all_sorted_queries = Hash.new(0)    
+#Парсим дату и время
 file.each { |str|
-    now_time = parse_date_time(str)
+    now_time = parse_date_time(str).to_i
     query = ""      #текст запроса
     pointer = 20    #с этой позиции начинается текст запроса
-    #парсим текст запроса
+
+    #Парсим текст запроса
     begin
       if pointer < str.length
         query += str[pointer]
@@ -42,42 +44,36 @@ file.each { |str|
       end
     end until pointer == str.length
     
-    query = query.mb_chars.downcase.to_s
-    
-    #добавляем текст запроса в список
-    if now_time.to_i > final_time.to_i    
-      all_queries.push(query)
+    #Получаем текст запроса
+    query = query.mb_chars.downcase.to_s.strip
+    all_queries.push(query)
+
+    #Ищем запрос в кэше   
+    if in_cache_queries[query] == 0 #запроса нет в кэше
+      in_cache_queries[query] = now_time 
+      max_size_cache += 1 #размер кэша
     else
-      queries.push(query)
-      all_queries.push(query)
+      #Запрос есть в кэше, но смотрим но его время хранения
+      if (now_time - cache_live_time - in_cache_queries[query]) > 0
+        in_cache_queries[query] = now_time      
+      else
+        #Время хранения запроса в кэше еще не истекло
+        hit += 1 
+      end   
     end
 }
 
-#взвешенный список всех запросов
-sorted_queries = Hash.new(0)
-all_queries.each{ |l| sorted_queries[l] += 1 }
-
-#поиск уникальных запросов
-sorted_queries.each do |key, value|
+#Поиск уникальных запросов
+all_queries.each{|q| all_sorted_queries[q] += 1}
+all_sorted_queries.each do |key, value|
   uniq_counter += 1 if value == 1
 end
 
-#взвешенный список обработанных запросов
-cache_list = Hash.new(0)
-queries.each{ |l| cache_list[l] += 1}
-cache_list.default = 0
+#Вероятность попадания в кэш
+hit = (hit.to_f / file.size).round 4
 
-#считаем количество НЕпопаданий запросов в кэш
-miss_ratio = 0
-sorted_queries.each_key do |key|
-  miss_ratio += 1 if cache_list[key] == 0
-end
-
-#вероятность попадания в кэш
-hit_ratio = (1.0 - (miss_ratio.to_f / file.size)).round 4
-
-#вывод
-puts "Queries total: #{file.size}"
+#Вывод
+puts "Queries total: #{max_size_cache}"
 puts "Queries uniq: #{uniq_counter}"
-puts "Queries max size: #{queries.size}"
-puts "Cache hit ratio: #{hit_ratio}"
+puts "Queries max size: #{all_queries.size}"
+puts "Cache hit ratio: #{hit}"
