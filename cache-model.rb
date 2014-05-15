@@ -31,6 +31,7 @@ file.map! {|element| element.chomp}
   in_cache_queries = Hash.new(0)
   all_sorted_queries = Hash.new(0)    
 #Парсим дату и время
+now_time = 0
 file.each { |str|
     now_time = parse_date_time(str).to_i
     query = ""      #текст запроса
@@ -61,7 +62,15 @@ file.each { |str|
         hit += 1 
       end   
     end
+    #Удаляем запросы, для которых время хранения истекло
+    in_cache_queries.each do |key, value| 
+      if now_time > (value + cache_live_time) 
+        in_cache_queries.delete(key)
+        max_size_cache -= 1
+      end
+    end
 }
+
 
 #Поиск уникальных запросов
 all_queries.each{|q| all_sorted_queries[q] += 1}
@@ -73,7 +82,7 @@ end
 hit = (hit.to_f / file.size).round 4
 
 #Вывод
-puts "Queries total: #{max_size_cache}"
+puts "Queries total: #{all_queries.size}"
 puts "Queries uniq: #{uniq_counter}"
-puts "Queries max size: #{all_queries.size}"
+puts "Queries max size: #{max_size_cache}"
 puts "Cache hit ratio: #{hit}"
